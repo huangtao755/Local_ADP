@@ -190,6 +190,7 @@ class HDP():
            model_input_with_u[:,0:state_dim] = torch.tensor(state).type(torch.FloatTensor)
            model_input_with_u[:,state_dim] = self.A_model(Variable(torch.Tensor(state))).view(state_num).type(torch.FloatTensor)
            next_xk_1 = self.modelnet(Variable(torch.Tensor(model_input_with_u))).type(torch.FloatTensor)
+
            predict2 = self.V_model(Variable(torch.Tensor(next_xk_1)))                   # 计算Vk+1
 
            predict1 = self.V_model(\
@@ -249,7 +250,7 @@ class HDP():
             State_traject[index + 1, :] = sim_nexstate
             pass
         pass
-        V_traject = self.V_model(Variable(torch.Tensor(State_traject))).data
+        V_traject = self.V_model(Variabsle.fle(torch.Tensor(State_traject))).data
         print('the simulation is over')
         self.plot_curve(State_traject , u_traject , V_traject , self.loss,self.model_loss)
         pass
