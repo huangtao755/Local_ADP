@@ -64,13 +64,19 @@ class LocalADP(object):
         self.critic_eval = Model(input_dim=self.evn.state_dim, output_dim=1)
         self.critic_target = Model(input_dim=self.evn.state_dim, output_dim=1)
         self.criterion_v = t.nn.MSELoss(reduction='mean')
-        optimizer_v = t.optim.Adam(self.critic_eval.parameters(), lr=learning_rate)
+        self.optimizer_v = t.optim.Adam(self.critic_eval.parameters(), lr=learning_rate)
 
         self.action_net = Model(input_dim=self.evn.state_dim, output_dim=self.evn.action_dim)
-        criterion_a = t.nn.MSELoss(reduction='mean')
-        optimizer_a = t.optim.Adam(self.action_net.parameters(), lr=learning_rate)
+        self.criterion_a = t.nn.MSELoss(reduction='mean')
+        self.optimizer_a = t.optim.Adam(self.action_net.parameters(), lr=learning_rate)
 
+        self.replay_buffer = []
 
+        self.batch_size = 32
+        self.update_freq = 60
 
     def batch_sample(self):
-        pass
+        count_num = len(self.replay_buffer)
+        if count_num >= self.batch_size:
+            index = np.random.randint(0, count_num, self.batch_size)
+            state = self.replay_buffer[:index][:]

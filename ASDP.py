@@ -249,7 +249,7 @@ class HDP():
             State_traject[index + 1, :] = sim_nexstate
             pass
         pass
-        V_traject = self.V_model(Variable(torch.Tensor(State_traject))).data
+        V_traject = self.V_model(Variabsle.fle(torch.Tensor(State_traject))).data
         print('the simulation is over')
         self.plot_curve(State_traject , u_traject , V_traject , self.loss,self.model_loss)
         pass
