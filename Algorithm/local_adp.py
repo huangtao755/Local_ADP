@@ -28,6 +28,8 @@ class Evn(object):
         self.action_dim = 1
         self.state = t.tensor([0, 0], dtype=t.float32, requires_grad=True)
         self.action = t.tensor([0], dtype=t.float32, requires_grad=True)
+        self.R_inver = 5 * t.eye(1)
+        self.g_x_t = [0, 0.1]
 
     def step(self, u):
         u = t.tensor(u, dtype=t.float32, requires_grad=True)
@@ -41,6 +43,8 @@ class Evn(object):
 
     @staticmethod
     def get_reward(x, u):
+        # print(x, u)
+
         Q = t.tensor([[1, 0], [0, 1]], dtype=t.float32)
         R = 0.2 * t.eye(1)
         reward = t.matmul(t.matmul(x, Q), x) + t.matmul(t.matmul(u, R), u)
@@ -69,36 +73,51 @@ class LocalADP(object):
         self.replay_buffer = []
         self.loss = []
 
-        self.batch_size = 32
+        self.batch_size = 3
         self.update_freq = 60
+
+        self.buffer_init()
+        print()
 
     def batch_sample(self):
         count_num = len(self.replay_buffer)
-        state = []
-        action = []
-        state_ = []
-        reward = []
+
+        state = t.zeros(self.batch_size, self.evn.state_dim)
+        action = t.zeros(self.batch_size, self.evn.action_dim)
+        state_ = t.zeros(self.batch_size, self.evn.state_dim)
+        reward = t.zeros(self.batch_size, 1)
 
         if count_num >= self.batch_size:
+
             index = np.random.randint(0, count_num, self.batch_size)
+            j = 0
             for i in iter(index):
-                state.append(self.replay_buffer[i, :self.evn.state_dim])
-                action.append(self.replay_buffer[i, self.evn.state_dim: self.evn.state_dim + self.evn.action_dim-1])
-                state_.append(self.replay_buffer[i, -self.evn.state_dim:-1])
-                reward.append(self.replay_buffer[i, -1:])
+                state[j, :] = (self.replay_buffer[i][0])
+                action[j, :] = (self.replay_buffer[i][1])
+                state_[j, :] = (self.replay_buffer[i][2])
+                reward[j, :] = (self.replay_buffer[i][-1])
+                j = j + 1
 
         if count_num < self.batch_size:
+            state = t.zeros(count_num, self.evn.state_dim)
+            action = t.zeros(count_num, self.evn.action_dim)
+            state_ = t.zeros(count_num, self.evn.state_dim)
+            reward = t.zeros(count_num, 1)
+            t.zeros(count_num, self.evn.state_dim)
             for i in range(count_num):
-                state.append(self.replay_buffer[i, :self.evn.state_dim])
-                action.append(self.replay_buffer[i, self.evn.state_dim: self.evn.state_dim + self.evn.action_dim-1])
-                state_.append(self.replay_buffer[i, -self.evn.state_dim:-1])
-                reward.append(self.replay_buffer[i, -1:])
+                state[i, :] = (self.replay_buffer[i][0])
+                action[i, :] = (self.replay_buffer[i][1])
+                state_[i, :] = (self.replay_buffer[i][2])
+                reward[i, :] = (self.replay_buffer[i][-1])
 
-        state = Variable(t.tensor(state, dtype=t.float32, requires_grad=True).data)
-        action = Variable(t.tensor(action, dtype=t.float32, requires_grad=True).data)
-        state_ = Variable(t.tensor(state_, dtype=t.float32, requires_grad=True).data)
-        reward = Variable(t.tensor(reward, dtype=t.float32, requires_grad=True).data)
-
+        state = Variable(t.tensor(state, dtype=t.float32, requires_grad=True))
+        action = Variable(t.tensor(action, dtype=t.float32, requires_grad=True))
+        state_ = Variable(t.tensor(state_, dtype=t.float32, requires_grad=True))
+        reward = Variable(t.tensor(reward, dtype=t.float32, requires_grad=True))
+        print(state)
+        print(action)
+        print(state_)
+        print(reward)
         return state, action, state_, reward
 
     @staticmethod
@@ -112,40 +131,64 @@ class LocalADP(object):
     #     return action
 
     def train(self, i):
-        state, _, _, _ = self.batch_sample()
-        state = Variable(t.tensor(state, dtype=t.float32, requires_grad=True))
+        data = self.batch_sample()
+        state = data[0]
+
         action = self.action_net(state)
+        print(action, 'action')
 
         state_ = t.zeros(len(state), self.evn.state_dim)
-        reward = t.zeros(len(state))
+        reward = t.zeros(len(state), 1)
 
         for i in range(len(state)):
             self.evn.state = state[i]
             u = action[i]
-            _, _, state_[i, :], reward[i, :] = self.evn.step(u)
+            data = self.evn.step(u)
+            # _, _, state_[i, :], reward[i, :] = self.evn.step(u)
+            state_[i, :] = data[2]
+            reward[i, :] = data[3]
 
         rate = self.update_rate(i)
 
         # calculate v target
-        v_target_new = self.critic_target(Variable(t.tensor(state_, dtype=t.float32, requires_grad=True)))
-        v_target_old = self.critic_target(Variable(t.tensor(state, dtype=t.float32, requires_grad=True)))
+        v_target_new = self.critic_target(state)
+        v_target_old = self.critic_target(state)
         v_target = (1 - rate) * v_target_old + rate * (reward + v_target_new)
         # calculate v target
 
-        v_eval = self.critic_eval(Variable(t.tensor(state, dtype=t.float32, requires_grad=True)))
+        # update v net
+        # state = t.tensor(state, dtype=t.float32, requires_grad=True)
+        print(state.shape[0], 'state size')
+        v_eval = self.critic_eval(state)
         v_loss = self.criterion_v(v_eval, v_target)
         self.optimizer_v.zero_grad()
-        v_loss.backward(retain_graph=True)
+        v_loss.backward(t.rand(state.shape[0], 2))
         self.optimizer_v.step()
+        # update v net
 
-        
+        # update u net
+        v_eval.backward(t.rand(state.shape[0], 2))
+        v_grad = state.grad
+        u_target = -0.5 * self.evn.R_inver * self.evn.g_x_t * v_grad
+        print('v_grad', v_grad)
+        print('u_target', u_target)
+        # update u net
 
     def buffer_init(self):
         num = 21
-        state = t.zeros([num*num, 2])
+        state = []
+        action = []
+        state_ = []
+        reward = []
         for i in range(num):
             for j in range(num):
-                state[i*num+j, :] = t.tensor([1-0.1*i, 1-0.1*j])
+                state = t.tensor([1-0.1*i, 1-0.1*j])
+                action = t.tensor([0], dtype=t.float32, requires_grad=True)
+                self.evn.state = state
+                _, _, state_, reward = self.evn.step(u=action)
+                self.replay_buffer.s
+        print(self.replay_buffer)
 
-
-
+adp = LocalADP()
+state = t.tensor([[1, 2],[3, 4]], dtype=t.float32)
+adp.train(1)

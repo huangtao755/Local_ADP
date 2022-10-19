@@ -151,14 +151,6 @@ def learn():
         print(v_loss)
 
 
-
-
-
-
-
-
-
-
-learn()
-
-
+t = np.arange(0, 10000, 1)
+a = 0.9 ** (40000/(-200-t))
+print(a)
