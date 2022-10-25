@@ -1,67 +1,40 @@
 import numpy as np
 import torch as t
+import copy
 from torch.autograd import Variable
 from Common import *
 import matplotlib.pyplot as plt
+
+from Environment import Evn
+
+t.manual_seed(2)
 
 
 class Model(t.nn.Module):
     def __init__(self, input_dim, output_dim):
         super(Model, self).__init__()
-        self.lay1 = t.nn.Linear(input_dim, 10, bias=True)
-        self.lay1.weight.data.normal_(-0.1, 0.1)
-        self.lay2 = t.nn.Linear(10, 10, bias=True)
-        self.lay2.weight.data.normal_(-0.1, 0.1)
-        self.lay3 = t.nn.Linear(10, output_dim, bias=True)
-        self.lay3.weight.data.normal_(-0.1, 0.1)
+        self.lay1 = t.nn.Linear(input_dim, 32, bias=True)
+        self.lay1.weight.data.normal_(0, 0)
+        # self.lay2 = t.nn.Linear(10, 10, bias=True)
+        # self.lay2.weight.data.normal_(0, 0)
+        self.lay3 = t.nn.Linear(32, output_dim, bias=False)
+        self.lay3.weight.data.normal_(0, 0)
 
     def forward(self, x):
         layer1 = self.lay1(x)
         layer1 = t.nn.functional.elu(layer1, alpha=1)
-        layer2 = self.lay2(layer1)
-        layer2 = t.nn.functional.elu(layer2, alpha=1)
-        output = self.lay3(layer2)
+        # layer2 = self.lay2(layer1)
+        # layer2 = t.nn.functional.elu(layer2, alpha=1)
+        output = self.lay3(layer1)
         return output
-
-
-class Evn(object):
-    def __init__(self):
-        self.state_dim = 2
-        self.action_dim = 1
-        self.state = t.tensor([0, 0], dtype=t.float32, requires_grad=True)
-        self.action = t.tensor([0], dtype=t.float32, requires_grad=True)
-        self.R_inver = t.tensor([5])
-        self.g_x_t = t.tensor([0, 0.1])
-
-    def step(self, u):
-        u = t.tensor([u], dtype=t.float32, requires_grad=True)
-        x1 = self.state[0]
-        x2 = self.state[1]
-        s = self.state
-        s_ = t.tensor(([0.1 * x2 + x1, -0.49 * t.sin(x1) - 0.1 * 0.2 * x2 + x2])) + t.tensor([0, 0.1])*u
-        reward = self.get_reward(self.state, u)
-        self.state = s_
-        return s, u, s_, reward
-
-    @staticmethod
-    def get_reward(x, u):
-        u = t.tensor([u], dtype=t.float32, requires_grad=True)
-        Q = t.tensor([[1, 0], [0, 1]], dtype=t.float32)
-        R = 0.2 * t.eye(1)
-        reward = t.matmul(t.matmul(x, Q), x) + t.matmul(t.matmul(u, R), u)
-        return reward
-
-    def reset(self):
-        self.state = t.tensor([1, 1], dtype=t.float32, requires_grad=True)
-        self.action = t.tensor([0], dtype=t.float32, requires_grad=True)
 
 
 class LocalADP(object):
     def __init__(self):
-        self.evn = Evn()
+        self.evn = Evn.Evn()
 
-        learning_rate = 0.01
-        learning_rate_a = 0.001
+        learning_rate = 0.005
+        learning_rate_a = 0.01
 
         self.critic_eval = Model(input_dim=self.evn.state_dim, output_dim=1)
         self.critic_target = Model(input_dim=self.evn.state_dim, output_dim=1)
@@ -72,7 +45,7 @@ class LocalADP(object):
         self.criterion_a = t.nn.MSELoss(reduction='mean')
         self.optimizer_a = t.optim.Adam(self.action_net.parameters(), lr=learning_rate_a)
 
-        self.a_loss = []
+        self.u_loss = []
         self.v_loss = []
         self.s_init = []
 
@@ -80,7 +53,7 @@ class LocalADP(object):
         self.tau = 0.1
 
         # self.update_freq = 60
-        self.batch_size = 32
+        self.batch_size = 25
 
         self.replay_buffer = ReplayBuffer(max_size=21*21,
                                           batch_size=self.batch_size,
@@ -114,7 +87,7 @@ class LocalADP(object):
             self.optimizer_a.zero_grad()
             a_loss.backward()
             self.optimizer_a.step()
-            self.a_loss.append(float(a_loss.mean(dim=0)))
+            self.u_loss.append(float(a_loss.mean(dim=0)))
         # update a net #
 
         for i in range(1000):
@@ -135,9 +108,54 @@ class LocalADP(object):
             self.v_loss.append(float(v_loss.mean(dim=0)))
             # update v net #
 
-            self.update_network_parameter()
+            self.network_parameter_update()
 
-    def update_network_parameter(self):
+    def v_net_update(self):
+        # 1st Step: get data #
+        s, u, r, s_ = self.replay_buffer.sample_buffer(is_reward_ascent=False)
+        s = t.tensor(s, dtype=t.float32, requires_grad=True)
+        a = t.tensor(u, dtype=t.float32, requires_grad=True)
+        s_ = t.tensor(s_, dtype=t.float32, requires_grad=True)
+        r = t.tensor(r, dtype=t.float32, requires_grad=True)
+        # 1st Step: get data #
+
+        # 2nd Step: calculate V target#
+        v_next = self.critic_eval(s_)
+        v_target = r + 0.99 * v_next
+        v_eval = self.critic_eval(s)
+        # 2nd Step: calculate V target#
+
+        # 3rd Step: calculate V loss #
+        v_loss = self.criterion_v(v_eval, v_target)
+        self.optimizer_v.zero_grad()
+        v_loss.backward()
+        self.optimizer_v.step()
+        # 3rd Step: calculate V loss #
+        # self.network_parameter_update()
+        self.v_loss.append(v_loss.detach().numpy())
+
+    def a_net_update(self):
+        s, u, r, s_ = self.replay_buffer.sample_buffer(is_reward_ascent=False)
+        s = t.tensor(s, dtype=t.float32, requires_grad=True)
+        u = self.action_net(s)
+        print(u[3])
+
+        s_ = t.zeros(s.shape)
+        for index in range(len(s)):
+            self.evn.state = s[index]
+            state, a, state_, r = self.evn.step(u=u[index])
+            s_[index, :] = state_
+
+        v_next_eval = self.critic_eval(s_)
+        u_statr = - self.evn.R_inver * self.evn.g_x_t * v_next_eval / 2
+
+        u_loss = self.criterion_a(u, u_statr)
+        self.optimizer_a.zero_grad()
+        u_loss.backward()
+        self.optimizer_a.step()
+        self.u_loss.append(u_loss.detach().numpy())
+
+    def network_parameter_update(self):
         for target_par, par in zip(self.critic_target.parameters(), self.critic_eval.parameters()):
             target_par.data.copy_(target_par.data * (1.0 - self.tau) + par.data * self.tau)
 
@@ -185,21 +203,26 @@ class LocalADP(object):
 
 
 adp = LocalADP()
-for i in range(100):
-    print('the %d step'%i)
-    for j in range(1):
-        adp.train(i)
-    adp.buffer_update()
-print(adp.v_loss)
-# print(adp.a_loss)
-
-state = adp.simulate()
+for i in range(1):
+    for j in range(5000):
+        adp.a_net_update()
+        if adp.u_loss[-1] < 0.01:
+            break
+    for j in range(20000):
+        adp.v_net_update()
+        if adp.v_loss[-1] < 0.01:
+            break
+v = []
+for i in iter(adp.s_init):
+    v.append(adp.critic_eval(t.tensor(i)).detach().numpy())
 
 fig1 = plt.figure(1)
-plt.plot(adp.v_loss)
-fig3 = plt.figure(3)
-plt.plot(adp.a_loss)
+plt.plot(v)
+r = adp.replay_buffer.r_mem
 fig2 = plt.figure(2)
-plt.plot(state)
-
+plt.plot(r)
+fig3 = plt.figure(3)
+plt.plot(adp.v_loss)
+fig4 = plt.figure(4)
+plt.plot(adp.u_loss)
 plt.show()

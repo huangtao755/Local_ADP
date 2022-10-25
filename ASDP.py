@@ -8,7 +8,7 @@ v_dim = 1                                                                      #
 action_dim = 1                                                                 # 动作维度
 A_learing_rate = 0.01                                                          # A网络学习率
 V_learing_rate = 0.01                                                          # V网络学习率
-learing_num = 1000                                                              # 学习次数
+learing_num = 1                                                             # 学习次数
 sim_num = 20                                                                   # 仿真步长
 x0 = np.array([2,-1])                                                          # 初始状态
 epislon = 0.01                                                                 # 阈值
@@ -22,6 +22,7 @@ y = np.arange(-1, 1, 0.1)
 xx, yy = np.meshgrid(x, y)  # 为一维的矩阵
 state = np.transpose(np.array([xx.ravel(), yy.ravel()]))  # 所有状态
 state_num = state.shape[0]  # 状态个数
+print(state_num)
 
 ####################################################################################################################
 # 定义原始模型函数
@@ -46,7 +47,9 @@ action1 = np.tile(action,(state.shape[0],1)).reshape((-1,1))
 model_input = np.zeros([state.shape[0]*action.shape[0],2+1])
 model_input[:,0:2] = state1
 model_input[:,2] = action1.reshape(state.shape[0]*action.shape[0])
-
+print(state1)
+print(action1)
+print(model_input)
 # 计算模型网络的label
 model_target =  model(state1,action1)
 
