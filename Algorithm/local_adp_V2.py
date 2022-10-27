@@ -10,30 +10,11 @@ from Environment import Evn
 t.manual_seed(2)
 
 
-class Model(t.nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(Model, self).__init__()
-        self.lay1 = t.nn.Linear(input_dim, 10, bias=True)
-        self.lay1.weight.data.normal_(0, 0)
-        self.lay2 = t.nn.Linear(10, 10, bias=True)
-        self.lay2.weight.data.normal_(0, 0)
-        self.lay3 = t.nn.Linear(10, output_dim, bias=False)
-        self.lay3.weight.data.normal_(0, 0)
-
-    def forward(self, x):
-        layer1 = self.lay1(x)
-        layer1 = t.nn.functional.elu(layer1, alpha=1)
-        # layer2 = self.lay2(layer1)
-        # layer2 = t.nn.functional.elu(layer2, alpha=1)
-        output = self.lay3(layer1)
-        return output
-
-
 class LocalADP(object):
     def __init__(self):
         self.evn = Evn.Evn()
 
-        learning_rate = 0.0001
+        learning_rate = 0.01
         learning_rate_a = 0.01
 
         self.critic_eval = Model(input_dim=self.evn.state_dim, output_dim=1)
@@ -60,55 +41,6 @@ class LocalADP(object):
                                           state_dim=self.evn.state_dim,
                                           action_dim=self.evn.action_dim)
         self.buffer_init()
-
-    def train(self, train_index: float):
-        self.step_count += 1
-
-        # 1st Step: get data #
-        s, a, r, s_ = self.replay_buffer.sample_buffer(is_reward_ascent=False)
-        s = t.tensor(s, dtype=t.float32, requires_grad=True)
-        a = t.tensor(a, dtype=t.float32, requires_grad=True)
-        s_ = t.tensor(s_, dtype=t.float32, requires_grad=True)
-        r = t.tensor(r, dtype=t.float32, requires_grad=True)
-        # 1st Step: get data #
-
-        for i in range(10):
-            # calculate a target #
-            v_eval = self.critic_target(s_)
-            v_eval.backward(t.rand(s.shape[0], 1), retain_graph=True)
-            v_grad = s_.grad
-            # print('v_grad', v_grad)
-            a_target = -0.5 * self.evn.R_inver * self.evn.g_x_t * v_grad
-            # print(self.evn.g_x_t * v_grad)
-            # calculate a target #
-
-            # update a net #
-            a_loss = self.criterion_a(a, a_target)
-            self.optimizer_a.zero_grad()
-            a_loss.backward()
-            self.optimizer_a.step()
-            self.u_loss.append(float(a_loss.mean(dim=0)))
-        # update a net #
-
-        for i in range(1000):
-            # 2nd Step: calculate V target#
-            rate = self.update_rate(train_index)
-            v = self.critic_target(s)
-            v_ = self.critic_target(s_)
-            v_target = (1 - rate) * v + rate * (r + v_)
-            # 2nd Step: calculate V target#
-
-            # update v net #
-            v_eval = self.critic_eval(s)
-            v_loss = self.criterion_v(v_eval, v_target)
-            self.optimizer_v.zero_grad()
-            v_loss.backward()
-            self.optimizer_v.step()
-
-            self.v_loss.append(float(v_loss.mean(dim=0)))
-            # update v net #
-
-            self.network_parameter_update()
 
     def v_net_update(self):
         # 1st Step: get data #
@@ -205,25 +137,7 @@ class LocalADP(object):
 
 adp = LocalADP()
 for i in range(1):
-    for j in range(5000):
-        adp.a_net_update()
-        if adp.u_loss[-1] < 0.01:
-            break
-    for j in range(50000):
-        adp.v_net_update()
-        if adp.v_loss[-1] < 0.01:
-            break
-v = []
-for i in iter(adp.s_init):
-    v.append(adp.critic_eval(t.tensor(i)).detach().numpy())
-
-fig1 = plt.figure(1)
-plt.plot(v)
-r = adp.replay_buffer.r_mem
-fig2 = plt.figure(2)
-plt.plot(r)
-fig3 = plt.figure(3)
-plt.plot(adp.v_loss)
-fig4 = plt.figure(4)
-plt.plot(adp.u_loss)
-plt.show()
+    print('the %d step'%i)
+    for j in range(1):
+        pass
+print(adp.v_loss)

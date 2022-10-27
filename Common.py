@@ -1,5 +1,6 @@
 import random
 import numpy as np
+import torch as t
 
 
 class ReplayBuffer:
@@ -48,3 +49,22 @@ class ReplayBuffer:
         actions_ = self._s_mem[batch]
 
         return states, actions, rewards, actions_
+
+
+class Model(t.nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(Model, self).__init__()
+        self.lay1 = t.nn.Linear(input_dim, 10, bias=True)
+        self.lay1.weight.data.normal_(0, 0)
+        self.lay2 = t.nn.Linear(10, 10, bias=True)
+        self.lay2.weight.data.normal_(0, 0)
+        self.lay3 = t.nn.Linear(10, output_dim, bias=False)
+        self.lay3.weight.data.normal_(0, 0)
+
+    def forward(self, x):
+        layer1 = self.lay1(x)
+        layer1 = t.nn.functional.elu(layer1, alpha=1)
+        layer2 = self.lay2(layer1)
+        layer2 = t.nn.functional.elu(layer2, alpha=1)
+        output = self.lay3(layer2)
+        return output
