@@ -13,11 +13,11 @@ t.manual_seed(2)
 class Model(t.nn.Module):
     def __init__(self, input_dim, output_dim):
         super(Model, self).__init__()
-        self.lay1 = t.nn.Linear(input_dim, 32, bias=True)
+        self.lay1 = t.nn.Linear(input_dim, 10, bias=True)
         self.lay1.weight.data.normal_(0, 0)
-        # self.lay2 = t.nn.Linear(10, 10, bias=True)
-        # self.lay2.weight.data.normal_(0, 0)
-        self.lay3 = t.nn.Linear(32, output_dim, bias=False)
+        self.lay2 = t.nn.Linear(10, 10, bias=True)
+        self.lay2.weight.data.normal_(0, 0)
+        self.lay3 = t.nn.Linear(10, output_dim, bias=False)
         self.lay3.weight.data.normal_(0, 0)
 
     def forward(self, x):
@@ -33,7 +33,7 @@ class LocalADP(object):
     def __init__(self):
         self.evn = Evn.Evn()
 
-        learning_rate = 0.005
+        learning_rate = 0.0001
         learning_rate_a = 0.01
 
         self.critic_eval = Model(input_dim=self.evn.state_dim, output_dim=1)
@@ -53,7 +53,7 @@ class LocalADP(object):
         self.tau = 0.1
 
         # self.update_freq = 60
-        self.batch_size = 25
+        self.batch_size = 24
 
         self.replay_buffer = ReplayBuffer(max_size=21*21,
                                           batch_size=self.batch_size,
@@ -126,7 +126,8 @@ class LocalADP(object):
         # 2nd Step: calculate V target#
 
         # 3rd Step: calculate V loss #
-        v_loss = self.criterion_v(v_eval, v_target)
+        v_loss = (v_eval - Variable(v_target.data)).pow(2).mean()
+        v_loss = self.criterion_v(v_eval, v_target.data)
         self.optimizer_v.zero_grad()
         v_loss.backward()
         self.optimizer_v.step()
@@ -208,7 +209,7 @@ for i in range(1):
         adp.a_net_update()
         if adp.u_loss[-1] < 0.01:
             break
-    for j in range(20000):
+    for j in range(50000):
         adp.v_net_update()
         if adp.v_loss[-1] < 0.01:
             break
