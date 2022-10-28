@@ -5,14 +5,14 @@ from torch.autograd import Variable
 from Common import *
 import matplotlib.pyplot as plt
 
-from Environment import Evn
+from Environment import EvnA
 
 t.manual_seed(2)
 
 
 class LocalADP(object):
     def __init__(self):
-        self.evn = Evn.Evn()
+        self.evn = Evn.EvnA()
 
         learning_rate = 0.01
         learning_rate_a = 0.01
@@ -67,7 +67,28 @@ class LocalADP(object):
         # self.network_parameter_update()
         self.v_loss.append(v_loss.detach().numpy())
 
-    def a_net_update(self):
+    def a_net_update_optimal(self):
+        s, u, r, s_ = self.replay_buffer.sample_buffer(is_reward_ascent=False)
+        s = t.tensor(s, dtype=t.float32, requires_grad=True)
+        u = self.action_net(s)
+        print(u[3])
+
+        s_ = t.zeros(s.shape)
+        for index in range(len(s)):
+            self.evn.state = s[index]
+            state, a, state_, r = self.evn.step(u=u[index])
+            s_[index, :] = state_
+
+        v_next_eval = self.critic_eval(s_)
+        u_statr = - self.evn.R_inver * self.evn.g_x_t * v_next_eval / 2
+
+        u_loss = self.criterion_a(u, u_statr)
+        self.optimizer_a.zero_grad()
+        u_loss.backward()
+        self.optimizer_a.step()
+        self.u_loss.append(u_loss.detach().numpy())
+
+    def a_net_update_optimal(self):
         s, u, r, s_ = self.replay_buffer.sample_buffer(is_reward_ascent=False)
         s = t.tensor(s, dtype=t.float32, requires_grad=True)
         u = self.action_net(s)
@@ -133,11 +154,3 @@ class LocalADP(object):
             s, u, s_, r = self.evn.step(u)
             state.append(self.evn.state.detach().numpy())
         return state
-
-
-adp = LocalADP()
-for i in range(1):
-    print('the %d step'%i)
-    for j in range(1):
-        pass
-print(adp.v_loss)

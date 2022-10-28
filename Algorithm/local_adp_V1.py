@@ -184,22 +184,22 @@ class LocalADP(object):
         return state
 
 
-adp = LocalADP()
-for i in range(100):
-    print('the %d step'%i)
-    for j in range(1):
-        adp.train(i)
-    adp.buffer_update()
-print(adp.v_loss)
-# print(adp.a_loss)
-
-state = adp.simulate()
-
-fig1 = plt.figure(1)
-plt.plot(adp.v_loss)
-fig3 = plt.figure(3)
-plt.plot(adp.a_loss)
-fig2 = plt.figure(2)
-plt.plot(state)
-
-plt.show()
+# adp = LocalADP()
+# for i in range(100):
+#     print('the %d step'%i)
+#     for j in range(1):
+#         adp.train(i)
+#     adp.buffer_update()
+# print(adp.v_loss)
+# # print(adp.a_loss)
+#
+# state = adp.simulate()
+#
+# fig1 = plt.figure(1)
+# plt.plot(adp.v_loss)
+# fig3 = plt.figure(3)
+# plt.plot(adp.a_loss)
+# fig2 = plt.figure(2)
+# plt.plot(state)
+#
+# plt.show()
